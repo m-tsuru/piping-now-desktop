@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	SERVICE_UUID   = "12345678-1234-5678-1234-56789abcdef1"
-	URL_CHAR_UUID  = "12345678-1234-5678-1234-56789abcdef0"
-	MIME_CHAR_UUID = "12345678-1234-5678-1234-56789abcdef2"
+	SERVICE_UUID   = "0ffe3b09-5c3c-4afc-9832-8971e275d55e"
+	URL_CHAR_UUID  = "a1b3981f-4057-436d-a68a-c9f8bd83158f"
+	MIME_CHAR_UUID = "fd8508fa-61a2-482b-aa30-c328b9411371"
 )
 
 var debugMode bool
@@ -72,8 +72,8 @@ func attemptConnection() error {
 		mainCancel()
 	})
 
-	fmt.Println("🔍 Scanning for Piping-BLE devices...")
-	fmt.Printf("Looking for device name: 'PipingSender' or service UUID: %s\n", SERVICE_UUID)
+	fmt.Println("🔍 Scanning for piping-now advertising devices...")
+	fmt.Printf("Looking for service UUID: %s\n", SERVICE_UUID)
 
 	// Step 1: Execute scan only (connection later)
 	debugf("📡 Starting device scan (no connection yet)...\n")
@@ -102,37 +102,38 @@ func attemptConnection() error {
 			return
 		}
 
-		// Search by device name (highest priority)
-		if a.LocalName() == "PipingSender" {
-			fmt.Printf("✅ Found target device with matching name: PipingSender\n")
-			targetDevice = a
-			deviceFound = true
-			scanCancel() // Stop scan when device is found
-			return
-		}
-
-		// Try partial match as well
-		if strings.Contains(strings.ToLower(a.LocalName()), "piping") {
-			fmt.Printf("✅ Found target device with partial name match: %s\n", a.LocalName())
-			targetDevice = a
-			deviceFound = true
-			scanCancel()
-			return
-		}
-
-		// Search by service UUID
+		// Search by service UUID (highest priority)
 		for _, uuid := range a.Services() {
 			uuidStr := uuid.String()
 			normalizedFound := strings.ReplaceAll(strings.ToLower(uuidStr), "-", "")
 			normalizedTarget := strings.ReplaceAll(strings.ToLower(SERVICE_UUID), "-", "")
 
+			debugf("🔍 Comparing service UUID: %s\n", uuidStr)
+			debugf("   Found (normalized): %s\n", normalizedFound)
+			debugf("   Target (normalized): %s\n", normalizedTarget)
+
 			if normalizedFound == normalizedTarget || strings.EqualFold(uuidStr, SERVICE_UUID) {
-				fmt.Printf("✅ Found target device with matching service UUID: %s\n", a.LocalName())
+				fmt.Printf("✅ Found target device with matching service UUID!\n")
+				fmt.Printf("   Service UUID: %s\n", uuidStr)
+				fmt.Printf("   Device Name: %s\n", a.LocalName())
+				fmt.Printf("   Address: %s\n", a.Addr())
 				targetDevice = a
 				deviceFound = true
-				scanCancel()
+				scanCancel() // Stop scan when device is found
 				return
 			}
+		}
+
+		// Fallback: Search by device name (lower priority)
+		if a.LocalName() == "PipingSender" {
+			fmt.Printf("📱 Found device with name 'PipingSender' but no matching UUID. Checking further...\n")
+			// Don't immediately accept, continue scanning for UUID match
+		}
+
+		// Try partial match as fallback
+		if strings.Contains(strings.ToLower(a.LocalName()), "piping") {
+			fmt.Printf("📱 Found device with partial name match: %s (but preferring UUID match)\n", a.LocalName())
+			// Don't immediately accept, continue scanning for UUID match
 		}
 	}, nil)
 
@@ -141,7 +142,7 @@ func attemptConnection() error {
 	}
 
 	if !deviceFound {
-		return fmt.Errorf("target device not found during scan")
+		return fmt.Errorf("target device with service UUID %s not found during scan", SERVICE_UUID)
 	}
 
 	// Step 2: Connect to the found device
